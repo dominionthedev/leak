@@ -10,6 +10,11 @@ const ESC = "\x1b"
 
 // CSI builds a Control Sequence Introducer sequence: ESC [ params... final
 // Example: CSI(1, 1, 'H') → "\x1b[1;1H"
+//
+// A leading byte/rune parameter (e.g. '?' for DEC private modes, '>' for
+// secondary DA) is treated as a marker prefix, not a semicolon-joined
+// parameter — CSI ? 1049 h is one attached unit, never CSI ? ; 1049 h.
+// Every other adjacent pair of parameters is semicolon-joined.
 func CSI(params ...any) string {
 	if len(params) == 0 {
 		return ESC + "["
@@ -19,31 +24,67 @@ func CSI(params ...any) string {
 	b.WriteString(ESC)
 	b.WriteByte('[')
 
-	for i, p := range params {
-		if i == len(params)-1 {
-			// last argument is the final byte(s)
-			switch v := p.(type) {
-			case byte:
-				b.WriteByte(v)
-			case rune:
-				b.WriteRune(v)
-			case string:
-				b.WriteString(v)
-			default:
-				b.WriteString(fmt.Sprint(v))
-			}
+	rest := params
+	if len(params) > 1 && writeMarker(&b, params[0]) {
+		rest = params[1:]
+	}
+
+	for i, p := range rest {
+		if i == len(rest)-1 {
+			writeCSIParam(&b, p)
 			break
 		}
-
 		if i > 0 {
 			b.WriteByte(';')
 		}
-		b.WriteString(fmt.Sprint(p))
+		writeCSIParam(&b, p)
 	}
 	return b.String()
 }
 
+// writeMarker writes p and reports true if it's a byte or rune — the only
+// types used in this package for a leading CSI prefix character. Numeric
+// and string params are never markers and fall through to the normal
+// semicolon-joined loop in CSI.
+func writeMarker(b *strings.Builder, p any) bool {
+	switch v := p.(type) {
+	case byte:
+		b.WriteByte(v)
+		return true
+	case rune:
+		b.WriteRune(v)
+		return true
+	}
+	return false
+}
+
+// writeCSIParam writes a single CSI parameter value. byte/rune/string
+// write their literal content; anything else (int, and friends) is
+// formatted as a number. This must be used for every parameter position,
+// not just the final one — fmt.Sprint on a rune/byte prints its decimal
+// codepoint, not the character, which silently breaks any non-final
+// marker or literal byte parameter if bypassed.
+func writeCSIParam(b *strings.Builder, p any) {
+	switch v := p.(type) {
+	case byte:
+		b.WriteByte(v)
+	case rune:
+		b.WriteRune(v)
+	case string:
+		b.WriteString(v)
+	default:
+		b.WriteString(fmt.Sprint(v))
+	}
+}
+
 // OSC builds an Operating System Command: ESC ] cmd ; args BEL/ST
+// OSC builds an Operating System Command: ESC ] cmd ; args BEL/ST
+//
+// Every arg is sanitized to strip control bytes (0x00-0x1F, 0x7F) first.
+// Without that, a title string containing a raw ESC or BEL — plausible if
+// it's ever built from external/untrusted text — can terminate the OSC
+// sequence early and get its remaining bytes interpreted by the terminal
+// as a new escape sequence.
 func OSC(cmd int, args ...string) string {
 	var b strings.Builder
 	b.WriteString(ESC)
@@ -51,10 +92,19 @@ func OSC(cmd int, args ...string) string {
 	b.WriteString(strconv.Itoa(cmd))
 	for _, a := range args {
 		b.WriteByte(';')
-		b.WriteString(a)
+		b.WriteString(sanitizeOSCArg(a))
 	}
 	b.WriteByte('\x07') // BEL terminator (widely supported)
 	return b.String()
+}
+
+func sanitizeOSCArg(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // --- Cursor ---
