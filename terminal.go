@@ -486,3 +486,30 @@ func (t *Terminal) DisableFocusReporting() error {
 	t.focus = false
 	return nil
 }
+
+// BeginSyncUpdate tells the terminal to buffer subsequent output and
+// present it atomically once EndSyncUpdate is called, avoiding visible
+// tearing during a multi-write screen update. Support varies by
+// terminal — an unsupporting terminal just ignores the sequence and
+// renders normally.
+func (t *Terminal) BeginSyncUpdate() error {
+	_, err := t.WriteString(ansi.SynchronizedOutput(true))
+	return err
+}
+
+// EndSyncUpdate ends a synchronized update started by BeginSyncUpdate.
+func (t *Terminal) EndSyncUpdate() error {
+	_, err := t.WriteString(ansi.SynchronizedOutput(false))
+	return err
+}
+
+// SyncUpdate runs fn between BeginSyncUpdate and EndSyncUpdate. EndSyncUpdate
+// always runs, even if fn returns an error, so a failed frame doesn't leave
+// the terminal permanently buffering output.
+func (t *Terminal) SyncUpdate(fn func() error) error {
+	if err := t.BeginSyncUpdate(); err != nil {
+		return err
+	}
+	defer t.EndSyncUpdate()
+	return fn()
+}

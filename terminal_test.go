@@ -1,10 +1,12 @@
 package leak
 
 import (
+	"errors"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/dominionthedev/leak/ansi"
 	"github.com/dominionthedev/leak/event"
 	"github.com/dominionthedev/leak/parser"
 )
@@ -116,6 +118,67 @@ func TestReadEventReturnsErrorAfterFileCloses(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("ReadEvent never returned after the file closed")
+	}
+}
+
+func TestSyncUpdateWritesBeginAndEnd(t *testing.T) {
+	r, w, perr := os.Pipe()
+	if perr != nil {
+		t.Fatalf("os.Pipe: %v", perr)
+	}
+	defer r.Close()
+	term := &Terminal{f: w, fd: int(w.Fd()), parser: parser.New()}
+
+	readAll := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 256)
+		n, _ := r.Read(buf)
+		readAll <- buf[:n]
+	}()
+
+	if err := term.SyncUpdate(func() error {
+		_, err := term.WriteString("payload")
+		return err
+	}); err != nil {
+		t.Fatalf("SyncUpdate: %v", err)
+	}
+	w.Close()
+
+	got := <-readAll
+	want := ansi.SynchronizedOutput(true) + "payload" + ansi.SynchronizedOutput(false)
+	if string(got) != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestSyncUpdateEndsEvenOnError(t *testing.T) {
+	r, w, perr := os.Pipe()
+	if perr != nil {
+		t.Fatalf("os.Pipe: %v", perr)
+	}
+	defer r.Close()
+	term := &Terminal{f: w, fd: int(w.Fd()), parser: parser.New()}
+
+	readAll := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 256)
+		n, _ := r.Read(buf)
+		readAll <- buf[:n]
+	}()
+
+	wantErr := errors.New("frame failed")
+	err := term.SyncUpdate(func() error {
+		return wantErr
+	})
+	w.Close()
+
+	if err != wantErr {
+		t.Fatalf("SyncUpdate error = %v, want %v", err, wantErr)
+	}
+	got := <-readAll
+	want := ansi.SynchronizedOutput(true) + ansi.SynchronizedOutput(false)
+	if string(got) != want {
+		t.Fatalf("got %q, want %q — EndSyncUpdate should still have run", got, want)
 	}
 }
 
