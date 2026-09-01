@@ -2,6 +2,7 @@ package leak
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"sync"
@@ -32,6 +33,14 @@ type Terminal struct {
 	resizeCh  chan event.ResizeEvent
 	stopWinch chan struct{}
 	winchOnce sync.Once
+
+	// input reading — a single background goroutine owns the only
+	// blocking Read on f and feeds raw chunks through readCh, so
+	// ReadEvent/TryReadEvent can select across input and resize instead
+	// of sequentially blocking on Read. See readLoop for why.
+	readCh    chan []byte
+	readErrMu sync.Mutex
+	readErr   error
 }
 
 // Open opens the controlling terminal (/dev/tty) and prepares it for
@@ -53,7 +62,9 @@ func Open() (*Terminal, error) {
 		parser:    parser.New(),
 		resizeCh:  make(chan event.ResizeEvent, 4),
 		stopWinch: make(chan struct{}),
+		readCh:    make(chan []byte, 4),
 	}
+	go t.readLoop()
 	return t, nil
 }
 
@@ -263,61 +274,85 @@ func (t *Terminal) ShowCursor() error {
 
 // --- 3. understand the terminal ---
 
-// ReadEvent blocks until a complete event is available.
-// It also surfaces ResizeEvent when the terminal is resized (SIGWINCH).
-func (t *Terminal) ReadEvent() (event.Event, error) {
+// readLoop owns the only blocking Read on f, for the Terminal's lifetime.
+// It exists because a blocked Read is not reliably interrupted by
+// SIGWINCH: Go's runtime routes a tty's Read through the integrated
+// poller (epoll/kqueue), and a goroutine parked there only wakes when the
+// fd becomes readable — a signal alone doesn't do that. Without this, a
+// resize delivered while nobody is typing would sit in resizeCh unnoticed
+// until the next keypress unblocked the read. Running the blocking read
+// in its own goroutine and feeding chunks through readCh lets
+// ReadEvent/TryReadEvent select across resize and input instead.
+func (t *Terminal) readLoop() {
 	buf := make([]byte, 256)
 	for {
-		// pending resize takes priority
-		select {
-		case ev := <-t.resizeCh:
-			return ev, nil
-		default:
+		n, err := t.f.Read(buf)
+		if n > 0 {
+			chunk := make([]byte, n)
+			copy(chunk, buf[:n])
+			t.readCh <- chunk
 		}
+		if err != nil {
+			t.readErrMu.Lock()
+			t.readErr = err
+			t.readErrMu.Unlock()
+			close(t.readCh)
+			return
+		}
+	}
+}
 
+func (t *Terminal) readErrLocked() error {
+	t.readErrMu.Lock()
+	defer t.readErrMu.Unlock()
+	if t.readErr != nil {
+		return t.readErr
+	}
+	return io.EOF
+}
+
+// ReadEvent blocks until a complete event is available.
+// It also surfaces ResizeEvent when the terminal is resized (SIGWINCH),
+// even if nothing has been typed since the resize happened.
+func (t *Terminal) ReadEvent() (event.Event, error) {
+	for {
 		if ev := t.parser.Next(); ev != nil {
 			return ev, nil
 		}
-
-		// Use a small select so we can interleave resize signals with reads.
-		// Because f.Read blocks, we rely on SIGWINCH interrupting the read
-		// on most systems (EINTR), then we check resizeCh.
-		n, err := t.f.Read(buf)
-		if err != nil {
-			// On EINTR, check for a resize event and continue
-			if n == 0 {
-				select {
-				case ev := <-t.resizeCh:
-					return ev, nil
-				default:
-				}
+		select {
+		case ev := <-t.resizeCh:
+			return ev, nil
+		case data, ok := <-t.readCh:
+			if !ok {
+				return nil, t.readErrLocked()
 			}
-			// Still return real errors
-			if err != nil && !isEINTR(err) {
-				return nil, err
-			}
-			continue
+			t.parser.Feed(data)
 		}
-		t.parser.Feed(buf[:n])
 	}
 }
 
 // TryReadEvent returns an event if one is already available,
-// otherwise (nil, false, nil). Also checks pending resizes.
+// otherwise (nil, false, nil). Also checks pending resizes, and drains
+// any input the background reader has already picked up without blocking.
 func (t *Terminal) TryReadEvent() (event.Event, bool, error) {
-	select {
-	case ev := <-t.resizeCh:
-		return ev, true, nil
-	default:
-	}
 	if ev := t.parser.Next(); ev != nil {
 		return ev, true, nil
 	}
-	return nil, false, nil
-}
-
-func isEINTR(err error) bool {
-	return err == syscall.EINTR
+	select {
+	case ev := <-t.resizeCh:
+		return ev, true, nil
+	case data, ok := <-t.readCh:
+		if !ok {
+			return nil, false, t.readErrLocked()
+		}
+		t.parser.Feed(data)
+		if ev := t.parser.Next(); ev != nil {
+			return ev, true, nil
+		}
+		return nil, false, nil
+	default:
+		return nil, false, nil
+	}
 }
 
 // QueryCursor asks the terminal for the current cursor position
