@@ -163,6 +163,49 @@ func TestDeviceAttributesSecondary(t *testing.T) {
 	}
 }
 
+func TestColorReplyBEL(t *testing.T) {
+	p := New()
+	// OSC 10 ; rgb:RRRR/GGGG/BBBB BEL — foreground color reply
+	p.Feed([]byte("\x1b]10;rgb:1234/5678/9abc\x07"))
+	ev := p.Next()
+	ce, ok := ev.(event.ColorEvent)
+	if !ok {
+		t.Fatalf("expected ColorEvent, got %T %#v", ev, ev)
+	}
+	if ce.Which != 10 || ce.R != 0x1234 || ce.G != 0x5678 || ce.B != 0x9abc {
+		t.Fatalf("got %#v", ce)
+	}
+}
+
+func TestColorReplyST(t *testing.T) {
+	p := New()
+	// OSC 11 ; rgb:RRRR/GGGG/BBBB ST — background color reply,
+	// ST-terminated (ESC \) instead of BEL.
+	p.Feed([]byte("\x1b]11;rgb:0000/0000/0000\x1b\\"))
+	ev := p.Next()
+	ce, ok := ev.(event.ColorEvent)
+	if !ok {
+		t.Fatalf("expected ColorEvent, got %T %#v", ev, ev)
+	}
+	if ce.Which != 11 || ce.R != 0 || ce.G != 0 || ce.B != 0 {
+		t.Fatalf("got %#v", ce)
+	}
+}
+
+func TestOtherOSCRepliesStillIgnored(t *testing.T) {
+	p := New()
+	// A reply this parser doesn't understand (e.g. a title report) must
+	// still be consumed silently, not left stuck in the buffer or
+	// misparsed as a color event. Next() skips past the eventless OSC
+	// bytes internally and returns the following real event directly.
+	p.Feed([]byte("\x1b]0;some title\x07next"))
+	ev := p.Next()
+	ke, ok := ev.(event.KeyEvent)
+	if !ok || ke.Rune != 'n' {
+		t.Fatalf("expected the trailing text to parse as 'n', got %#v", ev)
+	}
+}
+
 func TestFocus(t *testing.T) {
 	p := New()
 	p.Feed([]byte("\x1b[I\x1b[O"))

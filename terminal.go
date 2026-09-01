@@ -373,6 +373,34 @@ func (t *Terminal) QueryCursor() (row, col int, err error) {
 	}
 }
 
+// QueryForegroundColor asks the terminal for its foreground color and
+// waits for the reply.
+func (t *Terminal) QueryForegroundColor() (r, g, b uint16, err error) {
+	return t.queryColor(ansi.QueryFgColor(), 10)
+}
+
+// QueryBackgroundColor asks the terminal for its background color and
+// waits for the reply.
+func (t *Terminal) QueryBackgroundColor() (r, g, b uint16, err error) {
+	return t.queryColor(ansi.QueryBgColor(), 11)
+}
+
+func (t *Terminal) queryColor(query string, which int) (r, g, b uint16, err error) {
+	if _, err = t.WriteString(query); err != nil {
+		return 0, 0, 0, err
+	}
+	for {
+		ev, err := t.ReadEvent()
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		if ce, ok := ev.(event.ColorEvent); ok && ce.Which == which {
+			return ce.R, ce.G, ce.B, nil
+		}
+		// other events (including resize) are discarded while waiting
+	}
+}
+
 // --- 4. mode management ---
 
 // EnterAltScreen switches to the alternate screen buffer.

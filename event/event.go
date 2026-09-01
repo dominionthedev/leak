@@ -135,3 +135,14 @@ type DeviceAttributesEvent struct {
 }
 
 func (DeviceAttributesEvent) event() {}
+
+// ColorEvent is the reply to a foreground/background color query (OSC
+// 10/11). R, G, B are the 16-bit channel values as the terminal reported
+// them — most terminals report 4 hex digits per channel (0-65535), some
+// report fewer; either way the value is left as returned, not rescaled.
+type ColorEvent struct {
+	Which   int // 10 = foreground, 11 = background
+	R, G, B uint16
+}
+
+func (ColorEvent) event() {}

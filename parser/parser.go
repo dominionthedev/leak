@@ -2,6 +2,7 @@ package parser
 
 import (
 	"bytes"
+	"strconv"
 	"unicode/utf8"
 
 	"github.com/dominionthedev/leak/event"
@@ -225,13 +226,55 @@ func (p *Parser) parseCSI() (event.Event, int) {
 func (p *Parser) parseOSC() (event.Event, int) {
 	for i := 2; i < len(p.buf); i++ {
 		if p.buf[i] == 0x07 { // BEL
-			return nil, i + 1
+			return parseOSCReply(p.buf[2:i]), i + 1
 		}
 		if p.buf[i] == 0x1b && i+1 < len(p.buf) && p.buf[i+1] == '\\' {
-			return nil, i + 2
+			return parseOSCReply(p.buf[2:i]), i + 2
 		}
 	}
 	return nil, 0
+}
+
+// parseOSCReply decodes an OSC reply body ("cmd;payload"). Only
+// foreground/background color replies (cmd 10/11, an "rgb:" payload) are
+// currently turned into an Event; anything else is consumed and dropped,
+// same as before this recognized any reply at all.
+func parseOSCReply(body []byte) event.Event {
+	parts := bytes.SplitN(body, []byte{';'}, 2)
+	if len(parts) != 2 {
+		return nil
+	}
+	which := atoi(parts[0])
+	if which != 10 && which != 11 {
+		return nil
+	}
+	r, g, b, ok := parseRGBSpec(parts[1])
+	if !ok {
+		return nil
+	}
+	return event.ColorEvent{Which: which, R: r, G: g, B: b}
+}
+
+// parseRGBSpec parses an X11-style "rgb:RRRR/GGGG/BBBB" color spec, the
+// format terminals use for OSC 10/11 replies. Channel widths other than
+// 4 hex digits are also accepted.
+func parseRGBSpec(s []byte) (r, g, b uint16, ok bool) {
+	if !bytes.HasPrefix(s, []byte("rgb:")) {
+		return 0, 0, 0, false
+	}
+	chans := bytes.Split(s[len("rgb:"):], []byte{'/'})
+	if len(chans) != 3 {
+		return 0, 0, 0, false
+	}
+	vals := make([]uint16, 3)
+	for i, c := range chans {
+		n, err := strconv.ParseUint(string(c), 16, 16)
+		if err != nil {
+			return 0, 0, 0, false
+		}
+		vals[i] = uint16(n)
+	}
+	return vals[0], vals[1], vals[2], true
 }
 
 // --- helpers ---
