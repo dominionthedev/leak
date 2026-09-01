@@ -119,6 +119,50 @@ func TestCursorPositionReport(t *testing.T) {
 	}
 }
 
+func TestDeviceAttributesPrimary(t *testing.T) {
+	p := New()
+	p.Feed([]byte("\x1b[?62;1;6c"))
+	ev := p.Next()
+	da, ok := ev.(event.DeviceAttributesEvent)
+	if !ok {
+		t.Fatalf("expected DeviceAttributesEvent, got %T %#v", ev, ev)
+	}
+	if da.Secondary {
+		t.Fatal("expected Secondary=false for a primary DA reply")
+	}
+	want := []int{62, 1, 6}
+	if len(da.Params) != len(want) {
+		t.Fatalf("Params = %v, want %v", da.Params, want)
+	}
+	for i := range want {
+		if da.Params[i] != want[i] {
+			t.Fatalf("Params = %v, want %v", da.Params, want)
+		}
+	}
+}
+
+func TestDeviceAttributesSecondary(t *testing.T) {
+	p := New()
+	p.Feed([]byte("\x1b[>0;136;0c"))
+	ev := p.Next()
+	da, ok := ev.(event.DeviceAttributesEvent)
+	if !ok {
+		t.Fatalf("expected DeviceAttributesEvent, got %T %#v", ev, ev)
+	}
+	if !da.Secondary {
+		t.Fatal("expected Secondary=true for a secondary DA reply")
+	}
+	want := []int{0, 136, 0}
+	if len(da.Params) != len(want) {
+		t.Fatalf("Params = %v, want %v", da.Params, want)
+	}
+	for i := range want {
+		if da.Params[i] != want[i] {
+			t.Fatalf("Params = %v, want %v", da.Params, want)
+		}
+	}
+}
+
 func TestFocus(t *testing.T) {
 	p := New()
 	p.Feed([]byte("\x1b[I\x1b[O"))

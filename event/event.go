@@ -121,8 +121,17 @@ type CursorPositionEvent struct {
 func (CursorPositionEvent) event() {}
 
 // DeviceAttributesEvent is the reply to a DA query.
+//
+// Primary DA replies (query: ansi.QueryDeviceAttributes) start with '?'
+// and describe the terminal's own capabilities; secondary DA replies
+// (query: ansi.QuerySecondaryDA) start with '>' and typically report
+// terminal type/firmware version. Secondary reports which one this is;
+// Params holds the ;-separated numbers with that leading marker
+// stripped. Raw is kept for anything Params doesn't cover.
 type DeviceAttributesEvent struct {
-	Raw string // keep the raw reply for now; can be parsed later
+	Raw       string
+	Secondary bool
+	Params    []int
 }
 
 func (DeviceAttributesEvent) event() {}

@@ -207,7 +207,7 @@ func (p *Parser) parseCSI() (event.Event, int) {
 				row, col := parseTwoNums(seq)
 				return event.CursorPositionEvent{Row: row, Col: col}, n
 			case 'c': // DA reply
-				return event.DeviceAttributesEvent{Raw: string(seq)}, n
+				return parseDA(seq), n
 			case 'M', 'm': // SGR mouse
 				return parseSGRMouse(seq, final == 'm'), n
 			case 'I': // focus gained
@@ -379,6 +379,26 @@ func parseTwoNums(seq []byte) (int, int) {
 		return 1, 1
 	}
 	return atoi(parts[0]), atoi(parts[1])
+}
+
+// parseDA parses a DA reply body. Primary DA replies look like
+// "?62;1;6" (leading '?'); secondary DA replies look like ">0;136;0"
+// (leading '>'). Either marker is stripped before splitting the
+// remaining ;-separated numbers into Params.
+func parseDA(seq []byte) event.DeviceAttributesEvent {
+	ev := event.DeviceAttributesEvent{Raw: string(seq)}
+	body := seq
+	if len(body) > 0 && (body[0] == '?' || body[0] == '>') {
+		ev.Secondary = body[0] == '>'
+		body = body[1:]
+	}
+	for _, part := range bytes.Split(body, []byte{';'}) {
+		if len(part) == 0 {
+			continue
+		}
+		ev.Params = append(ev.Params, atoi(part))
+	}
+	return ev
 }
 
 func atoi(b []byte) int {
