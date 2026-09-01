@@ -45,7 +45,9 @@ func main() {
 			if e.Key == event.KeyRune && (e.Rune == 'q' || e.Rune == 'Q') {
 				return
 			}
-			if e.Mod&event.ModCtrl != 0 && e.Rune == 0 {
+			// Ctrl-C and Ctrl-D are distinguishable now — Rune carries
+			// which key it was instead of collapsing both to 0.
+			if e.Mod&event.ModCtrl != 0 && (e.Rune == 'c' || e.Rune == 'd') {
 				return
 			}
 			_ = t.MoveTo(6, 4)

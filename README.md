@@ -72,4 +72,17 @@ leak/
 
 ## Status
 
-Early foundation. The core loop (open → raw → write sequences → read events → restore) works. More sequences, richer DA parsing, synchronized output helpers, terminal profile-based functions, and color queries will come next.
+Early foundation. The core loop (open → raw → write sequences → read
+events → restore) works, resize events are delivered even on an idle
+terminal, and the input/color/DA parsing path has real test coverage.
+
+Landed: more sequences (insert/delete line, erase char, scroll region),
+richer DA parsing (structured params, primary vs secondary), synchronized
+output helpers, and color queries (OSC 10/11 replies now actually decode
+instead of being silently discarded).
+
+Not started: terminal profile-based functions (color-capability detection
+— NoColor/16/256/TrueColor, env-var + terminal-query heuristics). Deferred
+on purpose — it's a real design surface (detection strategy, fallback
+behavior, API shape) that deserves its own pass rather than being bolted
+on alongside everything else.
