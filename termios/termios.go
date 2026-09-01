@@ -88,4 +88,3 @@ func OpenTTY() (*os.File, error) {
 }
 
 // (platform-specific ioctl constants live in termios_*.go)
-
