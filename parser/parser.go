@@ -56,17 +56,8 @@ func (p *Parser) Next() event.Event {
 			continue
 		}
 
-		// Control characters
+		// Control characters with dedicated named keys.
 		switch p.buf[0] {
-		case 0x00: // NUL – ignore
-			p.buf = p.buf[1:]
-			continue
-		case 0x03: // Ctrl-C
-			p.buf = p.buf[1:]
-			return event.KeyEvent{Key: event.KeyRune, Rune: 0, Mod: event.ModCtrl}
-		case 0x04: // Ctrl-D
-			p.buf = p.buf[1:]
-			return event.KeyEvent{Key: event.KeyRune, Rune: 0, Mod: event.ModCtrl}
 		case 0x08, 0x7f: // BS / DEL
 			p.buf = p.buf[1:]
 			return event.KeyEvent{Key: event.KeyBackspace}
@@ -76,6 +67,17 @@ func (p *Parser) Next() event.Event {
 		case 0x0a, 0x0d: // LF / CR
 			p.buf = p.buf[1:]
 			return event.KeyEvent{Key: event.KeyEnter}
+		}
+
+		// Every other C0 control byte (0x00-0x1f) is Ctrl+<letter> —
+		// represented the same way as any other modified key, the base
+		// rune with ModCtrl set, instead of a special zero-value case
+		// per key. This used to special-case only Ctrl-C and Ctrl-D as
+		// Rune:0, which made them indistinguishable from each other and
+		// inconsistent with every other Ctrl+letter combo.
+		if c := p.buf[0]; c <= 0x1f {
+			p.buf = p.buf[1:]
+			return event.KeyEvent{Key: event.KeyRune, Rune: ctrlRune(c), Mod: event.ModCtrl}
 		}
 
 		// UTF-8 rune
@@ -385,7 +387,35 @@ func atoi(b []byte) int {
 		if c < '0' || c > '9' {
 			break
 		}
+		// Guard against a pathologically long digit run (a malicious or
+		// corrupted terminal reply) silently overflowing int via
+		// wraparound. Any real terminal reply value is small; once we're
+		// well past anything meaningful, stop accumulating.
+		if n > 1_000_000 {
+			continue
+		}
 		n = n*10 + int(c-'0')
 	}
 	return n
+}
+
+// ctrlRune maps a C0 control byte (0x00-0x1f) to the base rune it
+// represents when combined with ModCtrl, mirroring the standard
+// Ctrl+<key> = <key>&0x1F convention (and its reverse) that terminals use.
+func ctrlRune(c byte) rune {
+	switch {
+	case c == 0x00:
+		return ' ' // Ctrl-Space / Ctrl-@
+	case c >= 0x01 && c <= 0x1a:
+		return rune(c) + 'a' - 1 // 0x01→'a' ... 0x1a→'z'
+	case c == 0x1c:
+		return '\\'
+	case c == 0x1d:
+		return ']'
+	case c == 0x1e:
+		return '^'
+	case c == 0x1f:
+		return '_'
+	}
+	return rune(c)
 }

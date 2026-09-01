@@ -131,3 +131,94 @@ func TestFocus(t *testing.T) {
 		t.Fatalf("want focus lost, got %#v", ev)
 	}
 }
+
+func TestCtrlKeysAreDistinguishable(t *testing.T) {
+	// Regression test: Ctrl-C and Ctrl-D used to both produce
+	// KeyEvent{Rune: 0, Mod: ModCtrl} — identical events, no way to
+	// tell them apart. Every Ctrl+letter now maps consistently to the
+	// base rune with ModCtrl set.
+	cases := []struct {
+		input byte
+		want  rune
+	}{
+		{0x01, 'a'},  // Ctrl-A
+		{0x03, 'c'},  // Ctrl-C
+		{0x04, 'd'},  // Ctrl-D
+		{0x1a, 'z'},  // Ctrl-Z
+		{0x1c, '\\'}, // Ctrl-\
+		{0x1d, ']'},  // Ctrl-]
+		{0x1e, '^'},  // Ctrl-^
+		{0x1f, '_'},  // Ctrl-_
+	}
+	for _, c := range cases {
+		p := New()
+		p.Feed([]byte{c.input})
+		ev := p.Next()
+		ke, ok := ev.(event.KeyEvent)
+		if !ok {
+			t.Fatalf("input 0x%02x: expected KeyEvent, got %T %#v", c.input, ev, ev)
+		}
+		if ke.Mod&event.ModCtrl == 0 {
+			t.Fatalf("input 0x%02x: expected ModCtrl set, got %#v", c.input, ke)
+		}
+		if ke.Rune != c.want {
+			t.Fatalf("input 0x%02x: rune = %q, want %q", c.input, ke.Rune, c.want)
+		}
+	}
+
+	// Ctrl-C and Ctrl-D specifically must not collapse to the same event.
+	pc := New()
+	pc.Feed([]byte{0x03})
+	pd := New()
+	pd.Feed([]byte{0x04})
+	evC := pc.Next().(event.KeyEvent)
+	evD := pd.Next().(event.KeyEvent)
+	if evC == evD {
+		t.Fatalf("Ctrl-C and Ctrl-D produced identical events: %#v", evC)
+	}
+}
+
+func TestCtrlSpaceFromNUL(t *testing.T) {
+	p := New()
+	p.Feed([]byte{0x00})
+	ev := p.Next()
+	ke, ok := ev.(event.KeyEvent)
+	if !ok || ke.Rune != ' ' || ke.Mod&event.ModCtrl == 0 {
+		t.Fatalf("expected Ctrl-Space from NUL, got %#v", ev)
+	}
+}
+
+func TestNamedControlKeysStillWork(t *testing.T) {
+	cases := []struct {
+		input byte
+		want  event.Key
+	}{
+		{0x08, event.KeyBackspace},
+		{0x7f, event.KeyBackspace},
+		{0x09, event.KeyTab},
+		{0x0a, event.KeyEnter},
+		{0x0d, event.KeyEnter},
+	}
+	for _, c := range cases {
+		p := New()
+		p.Feed([]byte{c.input})
+		ev := p.Next()
+		ke, ok := ev.(event.KeyEvent)
+		if !ok || ke.Key != c.want {
+			t.Fatalf("input 0x%02x: got %#v, want Key=%v", c.input, ev, c.want)
+		}
+	}
+}
+
+func TestAtoiOverflowGuard(t *testing.T) {
+	// A pathologically long digit run shouldn't wrap around to a
+	// negative or nonsensical value via silent int overflow.
+	huge := make([]byte, 40)
+	for i := range huge {
+		huge[i] = '9'
+	}
+	n := atoi(huge)
+	if n < 0 {
+		t.Fatalf("atoi overflowed to negative: %d", n)
+	}
+}
