@@ -10,7 +10,7 @@ type Key int
 
 const (
 	KeyNone Key = iota
-	KeyRune    // printable character is in KeyEvent.Rune
+	KeyRune     // printable character is in KeyEvent.Rune
 	KeyUp
 	KeyDown
 	KeyRight
@@ -44,7 +44,7 @@ type Modifier int
 
 const (
 	ModNone  Modifier = 0
-	ModShift Modifier = 1 << iota
+	ModShift Modifier = 1 << (iota - 1)
 	ModAlt
 	ModCtrl
 	ModMeta // Super / Win / Cmd
@@ -52,9 +52,9 @@ const (
 
 // KeyEvent is produced for keyboard input.
 type KeyEvent struct {
-	Key Key
+	Key  Key
 	Rune rune
-	Mod Modifier
+	Mod  Modifier
 }
 
 func (KeyEvent) event() {}
