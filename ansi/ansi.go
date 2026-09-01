@@ -109,13 +109,13 @@ func sanitizeOSCArg(s string) string {
 
 // --- Cursor ---
 
-func CursorUp(n int) string        { return CSI(n, 'A') }
-func CursorDown(n int) string      { return CSI(n, 'B') }
-func CursorForward(n int) string   { return CSI(n, 'C') }
-func CursorBack(n int) string      { return CSI(n, 'D') }
-func CursorNextLine(n int) string  { return CSI(n, 'E') }
-func CursorPrevLine(n int) string  { return CSI(n, 'F') }
-func CursorColumn(col int) string  { return CSI(col, 'G') }
+func CursorUp(n int) string       { return CSI(n, 'A') }
+func CursorDown(n int) string     { return CSI(n, 'B') }
+func CursorForward(n int) string  { return CSI(n, 'C') }
+func CursorBack(n int) string     { return CSI(n, 'D') }
+func CursorNextLine(n int) string { return CSI(n, 'E') }
+func CursorPrevLine(n int) string { return CSI(n, 'F') }
+func CursorColumn(col int) string { return CSI(col, 'G') }
 func CursorPosition(row, col int) string {
 	return CSI(row, col, 'H')
 }
@@ -143,6 +143,28 @@ func ClearScreen() string {
 
 func ScrollUp(n int) string   { return CSI(n, 'S') }
 func ScrollDown(n int) string { return CSI(n, 'T') }
+
+// InsertLines inserts n blank lines at the cursor, pushing lines below
+// down (and off the scroll region/screen bottom).
+func InsertLines(n int) string { return CSI(n, 'L') }
+
+// DeleteLines deletes n lines starting at the cursor, pulling lines below
+// up to fill the gap.
+func DeleteLines(n int) string { return CSI(n, 'M') }
+
+// EraseChars erases n characters starting at the cursor without shifting
+// the rest of the line (unlike DeleteLines/backspace, nothing moves in to
+// fill the gap — it's just blanked).
+func EraseChars(n int) string { return CSI(n, 'X') }
+
+// SetScrollRegion (DECSTBM) constrains scrolling to rows top..bottom
+// (1-based, inclusive). Scrolling, ScrollUp/Down, and cursor movement
+// past the region's edges behave relative to this window until it's
+// reset.
+func SetScrollRegion(top, bottom int) string { return CSI(top, bottom, 'r') }
+
+// ResetScrollRegion restores the scrolling region to the full screen.
+func ResetScrollRegion() string { return CSI('r') }
 
 // --- Modes (private DEC / xterm) ---
 
@@ -195,15 +217,15 @@ func SetIconName(name string) string {
 
 // --- Colors / Attributes ---
 
-func Reset() string          { return CSI(0, 'm') }
-func Bold(on bool) string    { return toggle(1, 22, on) }
-func Dim(on bool) string     { return toggle(2, 22, on) }
-func Italic(on bool) string  { return toggle(3, 23, on) }
+func Reset() string            { return CSI(0, 'm') }
+func Bold(on bool) string      { return toggle(1, 22, on) }
+func Dim(on bool) string       { return toggle(2, 22, on) }
+func Italic(on bool) string    { return toggle(3, 23, on) }
 func Underline(on bool) string { return toggle(4, 24, on) }
-func Blink(on bool) string   { return toggle(5, 25, on) }
-func Reverse(on bool) string { return toggle(7, 27, on) }
-func Hidden(on bool) string  { return toggle(8, 28, on) }
-func Strike(on bool) string  { return toggle(9, 29, on) }
+func Blink(on bool) string     { return toggle(5, 25, on) }
+func Reverse(on bool) string   { return toggle(7, 27, on) }
+func Hidden(on bool) string    { return toggle(8, 28, on) }
+func Strike(on bool) string    { return toggle(9, 29, on) }
 
 func FgColor(c int) string { // 0-7 or 8-15 bright
 	if c < 8 {
@@ -231,11 +253,11 @@ func BgTrueColor(r, g, b int) string {
 
 // --- Device queries (the terminal will reply) ---
 
-func QueryCursorPosition() string { return CSI(6, 'n') } // DSR → ESC [ row ; col R
-func QueryDeviceAttributes() string { return CSI('c') }  // DA
-func QuerySecondaryDA() string     { return CSI('>', 'c') }
-func QueryFgColor() string         { return OSC(10, "?") }
-func QueryBgColor() string         { return OSC(11, "?") }
+func QueryCursorPosition() string   { return CSI(6, 'n') } // DSR → ESC [ row ; col R
+func QueryDeviceAttributes() string { return CSI('c') }    // DA
+func QuerySecondaryDA() string      { return CSI('>', 'c') }
+func QueryFgColor() string          { return OSC(10, "?") }
+func QueryBgColor() string          { return OSC(11, "?") }
 
 // --- helpers ---
 

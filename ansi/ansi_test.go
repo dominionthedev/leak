@@ -85,6 +85,25 @@ func countByte(s string, b byte) int {
 	return n
 }
 
+func TestMoreSequences(t *testing.T) {
+	cases := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"InsertLines(3)", InsertLines(3), "\x1b[3L"},
+		{"DeleteLines(2)", DeleteLines(2), "\x1b[2M"},
+		{"EraseChars(5)", EraseChars(5), "\x1b[5X"},
+		{"SetScrollRegion(2,20)", SetScrollRegion(2, 20), "\x1b[2;20r"},
+		{"ResetScrollRegion", ResetScrollRegion(), "\x1b[r"},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, c.got, c.want)
+		}
+	}
+}
+
 func TestOSCPassesThroughOrdinaryText(t *testing.T) {
 	got := SetTitle("my-session")
 	want := ESC + "]0;my-session\x07"
