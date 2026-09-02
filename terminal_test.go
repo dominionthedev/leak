@@ -121,6 +121,24 @@ func TestReadEventReturnsErrorAfterFileCloses(t *testing.T) {
 	}
 }
 
+// readUntilClose reads r until it hits an error (the pipe's write end
+// closing produces io.EOF) and returns everything read. A single Read
+// call has no guarantee of catching multiple separate Write calls before
+// it returns — the writer's several small writes can arrive in however
+// many chunks the scheduler happens to produce — so tests that write
+// begin+payload+end separately must drain to EOF, not read once.
+func readUntilClose(r *os.File) []byte {
+	var got []byte
+	buf := make([]byte, 256)
+	for {
+		n, err := r.Read(buf)
+		got = append(got, buf[:n]...)
+		if err != nil {
+			return got
+		}
+	}
+}
+
 func TestSyncUpdateWritesBeginAndEnd(t *testing.T) {
 	r, w, perr := os.Pipe()
 	if perr != nil {
@@ -131,9 +149,7 @@ func TestSyncUpdateWritesBeginAndEnd(t *testing.T) {
 
 	readAll := make(chan []byte, 1)
 	go func() {
-		buf := make([]byte, 256)
-		n, _ := r.Read(buf)
-		readAll <- buf[:n]
+		readAll <- readUntilClose(r)
 	}()
 
 	if err := term.SyncUpdate(func() error {
@@ -161,9 +177,7 @@ func TestSyncUpdateEndsEvenOnError(t *testing.T) {
 
 	readAll := make(chan []byte, 1)
 	go func() {
-		buf := make([]byte, 256)
-		n, _ := r.Read(buf)
-		readAll <- buf[:n]
+		readAll <- readUntilClose(r)
 	}()
 
 	wantErr := errors.New("frame failed")
