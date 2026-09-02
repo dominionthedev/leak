@@ -1,5 +1,7 @@
 # leak
 
+[![CI](https://github.com/dominionthedev/leak/actions/workflows/ci.yml/badge.svg)](https://github.com/dominionthedev/leak/actions/workflows/ci.yml)
+
 **leak** is a Go library for interacting with and controlling the terminal.
 
 ## What it does
@@ -69,6 +71,11 @@ leak/
 ├── parser/         // bytes → Event
 └── event/          // Key, Mouse, Paste, Focus, CursorPosition…
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md). [CHANGELOG.md](./CHANGELOG.md)
+tracks notable changes.
 
 ## License
 
