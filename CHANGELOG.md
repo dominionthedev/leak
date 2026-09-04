@@ -7,6 +7,8 @@ first tagged release ships.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-04
+
 ### Added
 - `InsertLines`, `DeleteLines`, `EraseChars`, `SetScrollRegion`
   (DECSTBM), `ResetScrollRegion`.
@@ -45,4 +47,5 @@ first tagged release ships.
   pathologically long digit run from a corrupted or hostile terminal
   reply.
 
-[Unreleased]: https://github.com/dominionthedev/leak/commits/main
+[Unreleased]: https://github.com/dominionthedev/leak/compare/v0.1.0...main
+[0.1.0]: https://github.com/dominionthedev/leak/releases/tag/v0.1.0
